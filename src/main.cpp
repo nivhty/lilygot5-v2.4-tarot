@@ -37,19 +37,18 @@ static const char* positionLabel() {
 static void showSplash() {
     Reading last;
     bool hasLast = loadLastReadingFromNvs(last);
-    SplashInfo info = {currentMode, cardsRemaining(), hasLast ? &last : nullptr, batteryPercent()};
+    SplashInfo info = {currentMode, cardsRemaining(), hasLast ? &last : nullptr};
     drawSplashScreen(info);
     currentState = STATE_SPLASH;
 }
 
 static void showFocusedCard() {
-    drawCardFace(currentReading.cards[focus], currentReading.isReversed(focus), positionLabel(), batteryPercent());
+    drawCardFace(currentReading.cards[focus], currentReading.isReversed(focus), positionLabel());
     currentState = STATE_CARD_FACE;
 }
 
 static void showSpread() {
-    drawSpread(currentReading);
-    currentState = STATE_SPREAD;
+    showFocusedCard();
 }
 
 static void showDescription() {
@@ -58,12 +57,11 @@ static void showDescription() {
     currentState = STATE_CARD_DESC;
 }
 
-// Show a reading's entry screen (single card face or spread overview)
+// Show a reading's entry screen
 static void showReading() {
     focus = 0;
     page = 0;
-    if (currentReading.count > 1) showSpread();
-    else showFocusedCard();
+    showFocusedCard();
 }
 
 static void doShuffleAnimation() {
@@ -116,9 +114,8 @@ static void handleEvent(ButtonEvent event) {
                 showDescription();
             } else if (event == BOOT_CLICK) {
                 if (currentReading.count > 1) {
-                    focus++;
-                    if (focus >= currentReading.count) { focus = 0; showSpread(); }
-                    else showFocusedCard();
+                    focus = (focus + 1) % currentReading.count;
+                    showFocusedCard();
                 } else {
                     showSplash();
                 }

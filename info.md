@@ -141,3 +141,30 @@ pio run -t upload
 pio device monitor -b 115200
 ```
 *(Note: If a MicroSD card is inserted, remove it during upload due to strapping pin GPIO 2)*
+
+
+## 10. Implementation Status & Hardware Verification
+
+- **Codebase Built**: Project fully set up with PlatformIO (`espressif32@6.12.0`, `esp32dev`).
+- **Features Implemented**:
+  1. **Single Card & 3-Card Spread (Past / Present / Future)**:
+     - In single mode: 72x122 vertical card on the left + upright/reversed indicator, card name, keywords, and Roman numeral/arcana info on the right.
+     - In 3-card spread mode: 3 cards drawn side-by-side with Past / Present / Future labels at the top or bottom depending on card orientation.
+     - Long-press BOOT to toggle between Single and Spread modes.
+  2. **Card of the Day / Persistent State**: Last reading saved to NVS and shown on the splash screen. Press BOOT on splash to instantly view the saved reading.
+  3. **No-Repeat Fisher-Yates Shuffle**: Tracks deck state in NVS so all 78 cards are drawn before an automatic reshuffle.
+  4. **Dynamic 180° Inversion**: Reversed cards are drawn rotated 180° (true reversed orientation).
+  5. **Deep Sleep & Battery**: Hibernates display, cuts GPIO12 power rail, stores UI state in RTC memory, and configures GPIO39 (Button 1) as EXT0 wakeup source.
+- **Compilation Output**:
+  - RAM: 15.8% (51.9 KB / 320 KB)
+  - Flash: 32.3% (1.0 MB / 3.1 MB)
+  - Target: `.pio/build/lilygo_t5_v24/firmware.bin`
+
+### Flashing to Hardware
+Connect the board via USB-C and run:
+```bash
+cd /home/tanvan/Work/lilygot5-v2.4-tarot
+pio run -t upload
+pio device monitor -b 115200
+```
+*(Note: If a MicroSD card is inserted, remove it during upload due to strapping pin GPIO 2)*

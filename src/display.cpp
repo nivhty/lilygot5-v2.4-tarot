@@ -18,7 +18,7 @@ typedef GxEPD2_213_B74 PanelDriver;
 typedef GxEPD2_213_BN PanelDriver;   // DEPG0213BN (default on T5 V2.4)
 #endif
 
-// Full frame buffer (128x250 / 8 = 4 KB) – single page, so we can draw and then display()
+// Full frame buffer (128x250 / 8 = 4 KB)
 static GxEPD2_BW<PanelDriver, PanelDriver::HEIGHT> display(
     PanelDriver(/*CS*/ EPD_CS, /*DC*/ EPD_DC, /*RST*/ EPD_RST, /*BUSY*/ EPD_BUSY));
 static U8G2_FOR_ADAFRUIT_GFX u8g2;
@@ -27,25 +27,17 @@ static uint8_t partialCount = 0;
 
 // Fonts
 #define FONT_TITLE  u8g2_font_helvB14_tf
-#define FONT_NAME   u8g2_font_helvB12_tf
-#define FONT_BOLD   u8g2_font_helvB10_tf
-#define FONT_BODY   u8g2_font_helvR10_tf
-#define FONT_SMALL  u8g2_font_helvR08_tf
-#define FONT_SMALLB u8g2_font_helvB08_tf
+#define FONT_NAME   u8g2_font_helvB10_tf
+#define FONT_BOLD   u8g2_font_helvB08_tf
+#define FONT_BODY   u8g2_font_helvR08_tf
+#define FONT_SMALL  u8g2_font_5x8_tf
 
-static const char* const SUIT_NAMES[] = {"Major Arcana", "Wands", "Cups", "Swords", "Pentacles"};
-static const char* const ROMAN[] = {
-    "0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI"};
-static const int16_t SPREAD_X[SPREAD_SIZE] = {0, 89, 178};
 static const char* const SPREAD_LABELS[SPREAD_SIZE] = {"Past", "Present", "Future"};
 
 // -----------------------------------------------------------------------------
 // Low-level helpers
 // -----------------------------------------------------------------------------
 
-// Push the frame buffer to the panel. Partial updates are used when requested, with a
-// forced full refresh every FULL_REFRESH_EVERY partials to clear ghosting.
 static void pushScreen(bool partial) {
     if (partial && partialCount < FULL_REFRESH_EVERY) {
         display.display(true);
@@ -70,15 +62,11 @@ static void drawText(int16_t x, int16_t baseline, const char* s) {
     u8g2.print(s);
 }
 
-static void drawTextRight(int16_t rightX, int16_t baseline, const char* s) {
-    drawText(rightX - textWidth(s), baseline, s);
-}
-
 static void drawTextCentered(int16_t centerX, int16_t baseline, const char* s) {
     drawText(centerX - textWidth(s) / 2, baseline, s);
 }
 
-// Word-wrap `text` with the current font into lines no wider than maxWidth.
+// Word-wrap `text` with current font into lines no wider than maxWidth
 static void wrapText(const char* text, int16_t maxWidth, std::vector<String>& out, size_t maxLines = 255) {
     if (!text) return;
     String line, word;
@@ -120,21 +108,14 @@ static void wrapText(const char* text, int16_t maxWidth, std::vector<String>& ou
     }
 }
 
-static void drawBattery(int16_t x, int16_t y, uint8_t pct) {
-    display.drawRect(x, y, 18, 9, GxEPD_BLACK);
-    display.fillRect(x + 18, y + 2, 2, 5, GxEPD_BLACK);
-    int16_t fill = (int16_t)(14 * (uint16_t)pct / 100);
-    if (fill > 0) display.fillRect(x + 2, y + 2, fill, 5, GxEPD_BLACK);
-}
-
-// Draw a 1-bit card bitmap, optionally rotated 180° for reversed cards.
+// Draw a 1-bit card bitmap, rotated 180° if reversed (upside down)
 static void drawCardBitmap(int16_t x0, int16_t y0, uint8_t cardIdx, bool reversed) {
     const uint8_t* bmp = cardIdx < TAROT_TOTAL_CARDS ? tarotBitmaps[cardIdx] : nullptr;
     const int16_t w = TAROT_BMP_WIDTH, h = TAROT_BMP_HEIGHT;
 
     if (!bmp) {
         display.drawRect(x0, y0, w, h, GxEPD_BLACK);
-        u8g2.setFont(FONT_SMALL);
+        u8g2.setFont(FONT_BODY);
         drawTextCentered(x0 + w / 2, y0 + h / 2, "NO IMG");
         return;
     }
@@ -152,14 +133,14 @@ static void drawCardBitmap(int16_t x0, int16_t y0, uint8_t cardIdx, bool reverse
     }
 }
 
-// Procedural card back: double frame, diamond lattice and a central sun/moon medallion.
+// Procedural card back: border, diamond pattern and moon medallion
 static void drawCardBack(int16_t x, int16_t y, int16_t w, int16_t h) {
     display.fillRect(x, y, w, h, GxEPD_WHITE);
     display.drawRoundRect(x, y, w, h, 4, GxEPD_BLACK);
     display.drawRoundRect(x + 3, y + 3, w - 6, h - 6, 3, GxEPD_BLACK);
 
-    // Diamond lattice
-    const int16_t ix = x + 6, iy = y + 6, iw = w - 12, ih = h - 12;
+    // Diamond pattern
+    const int16_t ix = x + 5, iy = y + 5, iw = w - 10, ih = h - 10;
     const int16_t step = w >= 60 ? 12 : 8;
     for (int16_t d = -ih; d < iw; d += step) {
         for (int16_t t = 0; t < ih; t++) {
@@ -170,29 +151,14 @@ static void drawCardBack(int16_t x, int16_t y, int16_t w, int16_t h) {
         }
     }
 
-    // Medallion
+    // Center medallion
     const int16_t cx = x + w / 2, cy = y + h / 2;
     const int16_t r = w / 4;
-    display.fillCircle(cx, cy, r + 3, GxEPD_WHITE);
-    display.drawCircle(cx, cy, r + 3, GxEPD_BLACK);
+    display.fillCircle(cx, cy, r + 2, GxEPD_WHITE);
+    display.drawCircle(cx, cy, r + 2, GxEPD_BLACK);
     display.drawCircle(cx, cy, r, GxEPD_BLACK);
-    // Crescent moon inside
-    display.fillCircle(cx, cy, r - 3, GxEPD_BLACK);
-    display.fillCircle(cx + (r - 3) / 2, cy - (r - 3) / 3, (r - 3) * 7 / 10, GxEPD_WHITE);
-}
-
-static void drawOrientationIcon(int16_t x, int16_t baseline, bool reversed) {
-    // Small filled triangle: up = upright, down = reversed
-    const int16_t top = baseline - 7;
-    if (reversed) display.fillTriangle(x, top, x + 7, top, x + 3, top + 6, GxEPD_BLACK);
-    else          display.fillTriangle(x + 3, top, x, top + 6, x + 7, top + 6, GxEPD_BLACK);
-}
-
-static String arcanaInfo(const TarotCard& card) {
-    if (card.suit == SUIT_MAJOR) {
-        return String(card.number <= 21 ? ROMAN[card.number] : "?") + "  Major Arcana";
-    }
-    return String("Minor Arcana - ") + SUIT_NAMES[card.suit <= SUIT_PENTACLES ? card.suit : 0];
+    display.fillCircle(cx, cy, r - 2, GxEPD_BLACK);
+    display.fillCircle(cx + (r - 2) / 2, cy - (r - 2) / 3, (r - 2) * 7 / 10, GxEPD_WHITE);
 }
 
 // -----------------------------------------------------------------------------
@@ -201,8 +167,6 @@ static String arcanaInfo(const TarotCard& card) {
 
 void setupDisplay() {
     SPI.begin(EPD_SCLK, EPD_MISO, EPD_MOSI);
-    // initial=true: controller RAM is lost while the panel is unpowered, so the
-    // first update after boot/wake must be a full refresh.
     display.init(0, true, 2, false);
     display.setRotation(BASE_ROTATION);
     display.setTextWrap(false);
@@ -222,164 +186,145 @@ void displayHibernate() {
 void drawSplashScreen(const SplashInfo& info) {
     beginFrame();
 
-    drawCardBack(0, 0, CARD_IMG_WIDTH, CARD_IMG_HEIGHT);
-
-    const int16_t x0 = 82;
-    const int16_t right = SCREEN_WIDTH - 4;
+    // Decorative Card Back at top
+    const int16_t bw = 70, bh = 100;
+    const int16_t bx = (SCREEN_WIDTH - bw) / 2;
+    drawCardBack(bx, 10, bw, bh);
 
     u8g2.setFont(FONT_TITLE);
-    drawText(x0, 20, "TAROT");
-    drawBattery(right - 20, 6, info.batteryPct);
+    drawTextCentered(SCREEN_WIDTH / 2, 130, "TAROT");
 
     u8g2.setFont(FONT_SMALL);
-    drawText(x0, 33, "78 cards  -  LilyGO T5");
-    display.drawFastHLine(x0, 38, right - x0, GxEPD_BLACK);
+    drawTextCentered(SCREEN_WIDTH / 2, 142, "78 CARDS - LILYGO T5");
+    display.drawFastHLine(8, 148, SCREEN_WIDTH - 16, GxEPD_BLACK);
 
-    char buf[48];
-    u8g2.setFont(FONT_SMALLB);
-    drawText(x0, 51, "Mode:");
-    u8g2.setFont(FONT_SMALL);
-    drawText(x0 + 34, 51, info.mode == MODE_SPREAD ? "Past / Present / Future" : "Single card");
+    u8g2.setFont(FONT_BOLD);
+    drawText(8, 162, "Mode:");
+    u8g2.setFont(FONT_BODY);
+    drawText(46, 162, info.mode == MODE_SPREAD ? "3-Card Spread" : "Single Card");
 
-    u8g2.setFont(FONT_SMALLB);
-    drawText(x0, 63, "Deck:");
-    u8g2.setFont(FONT_SMALL);
-    snprintf(buf, sizeof(buf), "%u / 78 cards left", info.cardsLeft);
-    drawText(x0 + 34, 63, buf);
+    u8g2.setFont(FONT_BOLD);
+    drawText(8, 175, "Deck:");
+    u8g2.setFont(FONT_BODY);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%u / 78 left", info.cardsLeft);
+    drawText(46, 175, buf);
 
-    u8g2.setFont(FONT_SMALLB);
-    drawText(x0, 75, "Last:");
-    u8g2.setFont(FONT_SMALL);
+    u8g2.setFont(FONT_BOLD);
+    drawText(8, 188, "Last:");
+    u8g2.setFont(FONT_BODY);
     if (info.lastReading && info.lastReading->count > 0) {
         String last;
         if (info.lastReading->count == 1) {
             last = getCard(info.lastReading->cards[0]).name;
-            if (info.lastReading->isReversed(0)) last += " (R)";
+            last += info.lastReading->isReversed(0) ? " (Down)" : " (Up)";
         } else {
-            last = "3-card spread";
+            last = "3-Card Spread";
         }
         std::vector<String> lines;
-        wrapText(last.c_str(), right - (x0 + 34), lines, 1);
-        drawText(x0 + 34, 75, lines.empty() ? "" : lines[0].c_str());
+        wrapText(last.c_str(), SCREEN_WIDTH - 50, lines, 1);
+        drawText(46, 188, lines.empty() ? "" : lines[0].c_str());
     } else {
-        drawText(x0 + 34, 75, "-");
+        drawText(46, 188, "-");
     }
 
-    display.drawFastHLine(x0, 83, right - x0, GxEPD_BLACK);
-    drawText(x0, 96, "BTN: draw    hold: read");
-    drawText(x0, 108, "BOOT: last    hold: mode");
+    display.drawFastHLine(8, 196, SCREEN_WIDTH - 16, GxEPD_BLACK);
+
+    u8g2.setFont(FONT_BODY);
+    drawTextCentered(SCREEN_WIDTH / 2, 212, "BTN 1 : Draw card");
+    drawTextCentered(SCREEN_WIDTH / 2, 226, "Hold  : Card details");
+    drawTextCentered(SCREEN_WIDTH / 2, 240, "BOOT  : Mode / Last");
 
     pushScreen(false);
 }
 
-void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel, uint8_t batteryPct) {
+// Vertical Card Face
+// 1. CARD IMAGE at top (upside down if reversed)
+// 2. CARD NAME (Up/ Down status)
+// 3. SHORT DESCRIPTION
+void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
     const TarotCard& card = getCard(cardIdx);
     beginFrame();
 
-    drawCardBitmap(0, 0, cardIdx, reversed);
+    // 1. CARD IMAGE at the top
+    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 9 px
+    const int16_t cardY = 2;
+    drawCardBitmap(cardX, cardY, cardIdx, reversed);
 
-    const int16_t x0 = 80;
-    const int16_t right = SCREEN_WIDTH - 3;
-    const int16_t textW = right - x0;
-    int16_t y = 0;
+    // 2. Divider line below card
+    const int16_t divY = cardY + CARD_IMG_HEIGHT + 2; // 166 px
+    display.drawFastHLine(4, divY, SCREEN_WIDTH - 8, GxEPD_BLACK);
 
-    // Position label (spread) above the name
+    // 3. CARD NAME (Up/ Down status)
+    String title = String(card.name) + (reversed ? " (Down)" : " (Up)");
     if (positionLabel) {
-        u8g2.setFont(FONT_SMALLB);
-        String label = String(positionLabel);
-        label.toUpperCase();
-        drawText(x0, 10, label.c_str());
-        y = 12;
+        title = String(positionLabel) + ": " + title;
     }
 
-    // Card name (max 2 lines)
-    u8g2.setFont(FONT_NAME);
-    std::vector<String> nameLines;
-    wrapText(card.name, textW, nameLines, 2);
-    for (const String& l : nameLines) {
-        y += 15;
-        drawText(x0, y, l.c_str());
+    const int16_t textMargin = 4;
+    const int16_t maxW = SCREEN_WIDTH - 2 * textMargin; // 114 px
+
+    u8g2.setFont(FONT_BOLD);
+    std::vector<String> titleLines;
+    wrapText(title.c_str(), maxW, titleLines, 2);
+
+    int16_t y = divY + 11;
+    for (const String& l : titleLines) {
+        drawText(textMargin, y, l.c_str());
+        y += 11;
     }
 
-    // Orientation
-    y += 14;
-    drawOrientationIcon(x0, y, reversed);
-    u8g2.setFont(FONT_SMALL);
-    drawText(x0 + 11, y, reversed ? "Reversed" : "Upright");
-
-    y += 5;
-    display.drawFastHLine(x0, y, textW, GxEPD_BLACK);
-
-    // Keywords
+    // 4. SHORT DESCRIPTION
+    const char* descText = reversed ? card.reversed : card.upright;
     u8g2.setFont(FONT_BODY);
-    std::vector<String> kwLines;
-    const int16_t bottomLineY = SCREEN_HEIGHT - 4;
-    const int16_t availLines = (bottomLineY - 12 - y) / 13;
-    wrapText(card.keywords, textW, kwLines, availLines > 0 ? availLines : 1);
-    for (const String& l : kwLines) {
-        y += 13;
-        drawText(x0, y, l.c_str());
-    }
+    std::vector<String> descLines;
+    const int16_t maxDescLines = (SCREEN_HEIGHT - y + 10) / 11;
+    wrapText(descText, maxW, descLines, maxDescLines > 0 ? maxDescLines : 1);
 
-    // Bottom row: arcana info + battery icon
-    u8g2.setFont(FONT_SMALL);
-    String info = arcanaInfo(card);
-    drawText(x0, bottomLineY, info.c_str());
-    drawBattery(right - 20, bottomLineY - 8, batteryPct);
+    for (const String& l : descLines) {
+        drawText(textMargin, y, l.c_str());
+        y += 11;
+    }
 
     pushScreen(false);
 }
 
 void drawSpread(const Reading& reading) {
-    beginFrame();
-
-    for (uint8_t i = 0; i < reading.count && i < SPREAD_SIZE; i++) {
-        const int16_t x = SPREAD_X[i];
-        const bool rev = reading.isReversed(i);
-        drawCardBitmap(x, 0, reading.cards[i], rev);
-
-        // Label tag placed on the edge opposite the card's printed title
-        // (title is at the bottom of the art, or at the top when reversed)
-        u8g2.setFont(FONT_SMALLB);
-        String label = String(SPREAD_LABELS[i]) + (rev ? " (R)" : "");
-        const int16_t tw = textWidth(label.c_str()) + 6;
-        const int16_t tx = x + (CARD_IMG_WIDTH - tw) / 2;
-        const int16_t ty = rev ? SCREEN_HEIGHT - 13 : 0;
-        display.fillRect(tx, ty, tw, 13, GxEPD_WHITE);
-        display.drawRect(tx, ty, tw, 13, GxEPD_BLACK);
-        drawText(tx + 3, ty + 10, label.c_str());
+    // In spread mode, focused card is shown full screen with its label
+    if (reading.count > 0) {
+        drawCardFace(reading.cards[0], reading.isReversed(0), SPREAD_LABELS[0]);
     }
-
-    pushScreen(false);
 }
 
-// Build the full list of description lines (shared by layout + rendering)
+// -----------------------------------------------------------------------------
+// Extended Description (when holding button)
+// -----------------------------------------------------------------------------
+
 struct DescLine {
     String text;
     bool bold;
 };
 
-static const int16_t DESC_LINE_H = 13;
-static const int16_t DESC_FIRST_BASELINE = 30;
-static const uint8_t DESC_LINES_PER_PAGE = 7;   // baselines 30..108
+static const int16_t DESC_LINE_H = 12;
+static const int16_t DESC_FIRST_BASELINE = 28;
+static const uint8_t DESC_LINES_PER_PAGE = 18;   // fits 18 lines vertically
 
 static void buildDescription(const TarotCard& card, bool reversed, std::vector<DescLine>& out) {
     const int16_t width = SCREEN_WIDTH - 8;
     std::vector<String> tmp;
 
+    out.push_back({reversed ? "Meaning (Reversed)" : "Meaning (Upright)", true});
     u8g2.setFont(FONT_BODY);
     wrapText(reversed ? card.reversed : card.upright, width, tmp);
     for (auto& s : tmp) out.push_back({s, false});
     tmp.clear();
 
     out.push_back({"Keywords", true});
-    u8g2.setFont(FONT_BODY);
     wrapText(card.keywords, width, tmp);
     for (auto& s : tmp) out.push_back({s, false});
     tmp.clear();
 
-    out.push_back({reversed ? "If upright" : "If reversed", true});
-    u8g2.setFont(FONT_BODY);
+    out.push_back({reversed ? "Opposite (Upright)" : "Opposite (Reversed)", true});
     wrapText(reversed ? card.upright : card.reversed, width, tmp);
     for (auto& s : tmp) out.push_back({s, false});
 }
@@ -399,24 +344,24 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
 
     beginFrame();
 
-    // Header: [orientation icon] Name ............ Past  1/2
-    const int16_t right = SCREEN_WIDTH - 4;
-    char meta[24] = "";
-    if (pages > 1) snprintf(meta, sizeof(meta), "%u/%u", page + 1, pages);
-    String rightText = positionLabel ? String(positionLabel) + (pages > 1 ? "  " : "") + meta : String(meta);
+    // Top Header: Title and Page
+    String header = String(card.name) + (reversed ? " (Down)" : " (Up)");
+    if (positionLabel) header = String(positionLabel) + " - " + header;
 
-    u8g2.setFont(FONT_SMALL);
-    const int16_t metaW = rightText.length() ? textWidth(rightText.c_str()) + 6 : 0;
-    drawTextRight(right, 12, rightText.c_str());
-
-    drawOrientationIcon(4, 12, reversed);
     u8g2.setFont(FONT_BOLD);
-    std::vector<String> header;
-    wrapText(card.name, right - 16 - metaW, header, 1);
-    drawText(16, 12, header.empty() ? "" : header[0].c_str());
+    std::vector<String> hLines;
+    wrapText(header.c_str(), SCREEN_WIDTH - 28, hLines, 1);
+    drawText(4, 12, hLines.empty() ? "" : hLines[0].c_str());
+
+    if (pages > 1) {
+        char pBuf[8];
+        snprintf(pBuf, sizeof(pBuf), "%u/%u", page + 1, pages);
+        u8g2.setFont(FONT_SMALL);
+        drawText(SCREEN_WIDTH - textWidth(pBuf) - 4, 12, pBuf);
+    }
     display.drawFastHLine(0, 16, SCREEN_WIDTH, GxEPD_BLACK);
 
-    // Body
+    // Body Lines
     const size_t start = (size_t)page * DESC_LINES_PER_PAGE;
     int16_t y = DESC_FIRST_BASELINE;
     for (size_t i = start; i < lines.size() && i < start + DESC_LINES_PER_PAGE; i++) {
@@ -430,29 +375,28 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
 }
 
 void drawShuffleFrame(int frame, bool firstFrame) {
-    // Animation window (centre of the screen)
-    const int16_t wx = 40, wy = 16, ww = 176, wh = 90;
-    const int16_t cw = 36, ch = 61;   // half-size card backs
+    const int16_t wx = 12, wy = 60, ww = 98, wh = 120;
+    const int16_t cw = 44, ch = 70;
 
     if (firstFrame) beginFrame();
     else            display.fillRect(wx, wy, ww, wh, GxEPD_WHITE);
 
-    // Three cards fanning in and out, middle card "cut" up and down
-    static const int8_t spread[] = {0, 6, 12, 6};
-    const int16_t s = spread[frame % 4];
-    const int16_t baseX = wx + 16, baseY = wy + (wh - ch) / 2;
-    const int16_t cut = (frame & 1) ? -8 : 4;
+    static const int8_t fSpread[] = {0, 4, 8, 4};
+    const int16_t s = fSpread[frame % 4];
+    const int16_t baseX = wx + 14, baseY = wy + 10;
+    const int16_t cut = (frame & 1) ? -5 : 3;
+
     drawCardBack(baseX, baseY, cw, ch);
-    drawCardBack(baseX + 10 + s, baseY + cut, cw, ch);
-    drawCardBack(baseX + 20 + 2 * s, baseY, cw, ch);
+    drawCardBack(baseX + 6 + s, baseY + cut, cw, ch);
+    drawCardBack(baseX + 12 + 2 * s, baseY, cw, ch);
 
     u8g2.setFont(FONT_BOLD);
     String text = "Shuffling";
     for (int i = 0; i < (frame % 3) + 1; i++) text += ".";
-    drawText(wx + 92, wy + wh / 2 + 5, text.c_str());
+    drawTextCentered(SCREEN_WIDTH / 2, wy + ch + 30, text.c_str());
 
     if (firstFrame) {
-        display.display(true);   // full-window partial: no black flash
+        display.display(true);
     } else {
         display.displayWindow(wx, wy, ww, wh);
     }
