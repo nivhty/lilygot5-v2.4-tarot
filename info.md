@@ -6,7 +6,11 @@ Official repo (pins + examples): https://github.com/Xinyuan-LilyGO/LilyGo-T5-Epa
 Using a lilygo t5 to shuffle tarot card on the eink display, read the documentation for pin and how to control the board. Feels free to recommend feature.
 
 # UI
-Base on the @t-echo-tarot folder, the lilygo t5 resolution is 2:1, the t echo is 1:1 so scale the layout accordingly. The card is vertical.
+Full vertical / portrait orientation (122 x 250 px):
+1. **CARD IMAGE** at the top: Full vertical card (104 x 162 px), rotated 180° when reversed (upside down).
+2. **CARD NAME (Up/ Down status)**: E.g. `The Fool (Up)` or `The Tower (Down)`.
+3. **SHORT DESCRIPTION**: 1-2 sentence core upright/reversed meaning.
+4. No battery indicator.
 
 ---
 
