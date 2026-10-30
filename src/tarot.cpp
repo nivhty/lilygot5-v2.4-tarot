@@ -39,6 +39,24 @@ static uint32_t randomBelow(uint32_t n) {
     return r % n;
 }
 
+void tarotShuffleWithDuration(uint32_t holdMs, uint32_t holdUs) {
+    // Fold hold duration and microsecond resolution into entropy pool
+    tarotAddEntropy(holdMs);
+    tarotAddEntropy(holdUs);
+    tarotAddEntropy((holdMs * 2654435761U) ^ holdUs);
+
+    // Extra dynamic deck cuts / swaps directly based on the calculated hold time:
+    // Even a 1ms or 1us difference will alter the swap indices and card ordering!
+    uint32_t cuts = (holdMs % 30) + 7;
+    for (uint32_t c = 0; c < cuts; c++) {
+        uint32_t i = randomBelow(DECK_SIZE);
+        uint32_t j = randomBelow(DECK_SIZE);
+        uint8_t tmp = deck[i];
+        deck[i] = deck[j];
+        deck[j] = tmp;
+    }
+}
+
 static void resetDeck() {
     for (uint8_t i = 0; i < DECK_SIZE; i++) deck[i] = i;
     deckPos = 0;

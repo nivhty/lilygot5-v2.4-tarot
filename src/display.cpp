@@ -144,15 +144,30 @@ static void drawCardBitmap(int16_t x0, int16_t y0, uint8_t cardIdx, bool reverse
     }
 }
 
-// Procedural card back: border, diamond pattern and moon medallion
+// Procedural card back: ornate border, diamond lattice pattern, and celestial moon medallion
 static void drawCardBack(int16_t x, int16_t y, int16_t w, int16_t h) {
     display.fillRect(x, y, w, h, GxEPD_WHITE);
+    // Outer rounded borders
     display.drawRoundRect(x, y, w, h, 4, GxEPD_BLACK);
-    display.drawRoundRect(x + 3, y + 3, w - 6, h - 6, 3, GxEPD_BLACK);
+    display.drawRoundRect(x + 2, y + 2, w - 4, h - 4, 3, GxEPD_BLACK);
+
+    if (w >= 80) {
+        // Detailed ornate border for full-sized cover
+        display.drawRect(x + 5, y + 5, w - 10, h - 10, GxEPD_BLACK);
+        display.drawRect(x + 7, y + 7, w - 14, h - 14, GxEPD_BLACK);
+
+        // Corner ornaments
+        const int16_t cOff = 10;
+        display.drawCircle(x + cOff, y + cOff, 2, GxEPD_BLACK);
+        display.drawCircle(x + w - 1 - cOff, y + cOff, 2, GxEPD_BLACK);
+        display.drawCircle(x + cOff, y + h - 1 - cOff, 2, GxEPD_BLACK);
+        display.drawCircle(x + w - 1 - cOff, y + h - 1 - cOff, 2, GxEPD_BLACK);
+    }
 
     // Diamond pattern
-    const int16_t ix = x + 5, iy = y + 5, iw = w - 10, ih = h - 10;
-    const int16_t step = w >= 60 ? 12 : 8;
+    const int16_t pad = (w >= 80) ? 10 : 4;
+    const int16_t ix = x + pad, iy = y + pad, iw = w - 2 * pad, ih = h - 2 * pad;
+    const int16_t step = (w >= 80) ? 12 : 8;
     for (int16_t d = -ih; d < iw; d += step) {
         for (int16_t t = 0; t < ih; t++) {
             int16_t px1 = ix + d + t;
@@ -164,12 +179,30 @@ static void drawCardBack(int16_t x, int16_t y, int16_t w, int16_t h) {
 
     // Center medallion
     const int16_t cx = x + w / 2, cy = y + h / 2;
-    const int16_t r = w / 4;
-    display.fillCircle(cx, cy, r + 2, GxEPD_WHITE);
+    const int16_t r = (w >= 80) ? 26 : (w / 4);
+
+    display.fillCircle(cx, cy, r + 4, GxEPD_WHITE);
+    display.drawCircle(cx, cy, r + 4, GxEPD_BLACK);
     display.drawCircle(cx, cy, r + 2, GxEPD_BLACK);
     display.drawCircle(cx, cy, r, GxEPD_BLACK);
     display.fillCircle(cx, cy, r - 2, GxEPD_BLACK);
-    display.fillCircle(cx + (r - 2) / 2, cy - (r - 2) / 3, (r - 2) * 7 / 10, GxEPD_WHITE);
+
+    // Crescent moon
+    const int16_t mr = (r - 2) * 7 / 10;
+    const int16_t mOffX = (r - 2) / 2;
+    const int16_t mOffY = (r - 2) / 3;
+    display.fillCircle(cx + mOffX, cy - mOffY, mr, GxEPD_WHITE);
+
+    if (w >= 80) {
+        // Celestial accents in cover mode: top and bottom 4-point stars
+        const int16_t starL = 5;
+        // Top star
+        display.drawFastVLine(cx, y + 16, starL * 2 + 1, GxEPD_BLACK);
+        display.drawFastHLine(cx - starL, y + 16 + starL, starL * 2 + 1, GxEPD_BLACK);
+        // Bottom star
+        display.drawFastVLine(cx, y + h - 16 - starL * 2 - 1, starL * 2 + 1, GxEPD_BLACK);
+        display.drawFastHLine(cx - starL, y + h - 16 - starL - 1, starL * 2 + 1, GxEPD_BLACK);
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -194,59 +227,15 @@ void displayHibernate() {
     display.hibernate();
 }
 
-void drawSplashScreen(const SplashInfo& info) {
+// Cover mode: displays ONLY the back of a tarot card (full refresh)
+void drawCoverScreen() {
     beginFrame();
-
-    // Decorative Card Back at top
-    const int16_t bw = 70, bh = 100;
-    const int16_t bx = (SCREEN_WIDTH - bw) / 2;
-    drawCardBack(bx, 10, bw, bh);
-
-    u8g2.setFont(FONT_TITLE);
-    drawTextCentered(SCREEN_WIDTH / 2, 130, "TAROT");
-
-    u8g2.setFont(FONT_SMALL);
-    drawTextCentered(SCREEN_WIDTH / 2, 142, "78 CARDS - LILYGO T5");
-    display.drawFastHLine(8, 148, SCREEN_WIDTH - 16, GxEPD_BLACK);
-
-    u8g2.setFont(FONT_BOLD);
-    drawText(8, 162, "Mode:");
-    u8g2.setFont(FONT_BODY);
-    drawText(46, 162, info.mode == MODE_SPREAD ? "3-Card Spread" : "Single Card");
-
-    u8g2.setFont(FONT_BOLD);
-    drawText(8, 175, "Deck:");
-    u8g2.setFont(FONT_BODY);
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%u / 78 left", info.cardsLeft);
-    drawText(46, 175, buf);
-
-    u8g2.setFont(FONT_BOLD);
-    drawText(8, 188, "Last:");
-    u8g2.setFont(FONT_BODY);
-    if (info.lastReading && info.lastReading->count > 0) {
-        String last;
-        if (info.lastReading->count == 1) {
-            last = getCard(info.lastReading->cards[0]).name;
-            last += info.lastReading->isReversed(0) ? " (Down)" : " (Up)";
-        } else {
-            last = "3-Card Spread";
-        }
-        std::vector<String> lines;
-        wrapText(last.c_str(), SCREEN_WIDTH - 50, lines, 1);
-        drawText(46, 188, lines.empty() ? "" : lines[0].c_str());
-    } else {
-        drawText(46, 188, "-");
-    }
-
-    display.drawFastHLine(8, 196, SCREEN_WIDTH - 16, GxEPD_BLACK);
-
-    u8g2.setFont(FONT_BODY);
-    drawTextCentered(SCREEN_WIDTH / 2, 212, "BTN 1 : Draw card");
-    drawTextCentered(SCREEN_WIDTH / 2, 226, "Hold  : Card details");
-    drawTextCentered(SCREEN_WIDTH / 2, 240, "BOOT  : Mode / Last");
-
-    pushScreen(false);
+    const int16_t bw = 120;
+    const int16_t bh = 240;
+    const int16_t bx = (SCREEN_WIDTH - bw) / 2; // 1 px
+    const int16_t by = (SCREEN_HEIGHT - bh) / 2; // 5 px
+    drawCardBack(bx, by, bw, bh);
+    pushScreen(false); // full refresh: crisp & pristine
 }
 
 // Vertical Card Face
@@ -375,25 +364,47 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
 }
 
 void drawShuffleFrame(int frame, bool firstFrame) {
-    const int16_t wx = 12, wy = 60, ww = 98, wh = 120;
-    const int16_t cw = 44, ch = 70;
+    const int16_t wx = 0, wy = 30, ww = 120, wh = 190;
+    const int16_t cw = 56, ch = 88;
 
-    if (firstFrame) beginFrame();
-    else            display.fillRect(wx, wy, ww, wh, GxEPD_WHITE);
+    if (firstFrame) {
+        beginFrame();
+    } else {
+        display.fillRect(wx, wy, ww, wh, GxEPD_WHITE);
+    }
 
-    static const int8_t fSpread[] = {0, 4, 8, 4};
-    const int16_t s = fSpread[frame % 4];
-    const int16_t baseX = wx + 14, baseY = wy + 10;
-    const int16_t cut = (frame & 1) ? -5 : 3;
+    int step = frame % 6;
+    int16_t midX = SCREEN_WIDTH / 2;
+    int16_t midY = wy + 55;
 
-    drawCardBack(baseX, baseY, cw, ch);
-    drawCardBack(baseX + 6 + s, baseY + cut, cw, ch);
-    drawCardBack(baseX + 12 + 2 * s, baseY, cw, ch);
+    // Mini card backs shuffling animation
+    int16_t offset = (step == 1 || step == 4) ? 14 : ((step == 2 || step == 5) ? 8 : 0);
+    int16_t liftL = (step % 2 == 1) ? -4 : 2;
+    int16_t liftR = (step % 2 == 0) ? -4 : 2;
+
+    int16_t leftX = midX - cw / 2 - offset;
+    int16_t rightX = midX - cw / 2 + offset;
+    int16_t centerX = midX - cw / 2;
+    int16_t baseY = midY - ch / 2;
+
+    if (step == 0) {
+        drawCardBack(centerX, baseY, cw, ch);
+    } else if (step == 1 || step == 2) {
+        drawCardBack(leftX, baseY + liftL, cw, ch);
+        drawCardBack(rightX, baseY + liftR, cw, ch);
+    } else {
+        drawCardBack(leftX, baseY + liftL, cw, ch);
+        drawCardBack(rightX, baseY + liftR, cw, ch);
+        drawCardBack(centerX, baseY, cw, ch);
+    }
 
     u8g2.setFont(FONT_BOLD);
     String text = "Shuffling";
     for (int i = 0; i < (frame % 3) + 1; i++) text += ".";
-    drawTextCentered(SCREEN_WIDTH / 2, wy + ch + 30, text.c_str());
+    drawTextCentered(SCREEN_WIDTH / 2, wy + ch + 38, text.c_str());
+
+    u8g2.setFont(FONT_SMALL);
+    drawTextCentered(SCREEN_WIDTH / 2, wy + ch + 52, "Release to draw");
 
     if (firstFrame) {
         display.display(true);

@@ -7,10 +7,27 @@ Using a lilygo t5 to shuffle tarot card on the eink display, read the documentat
 
 # UI
 Full vertical / portrait orientation (122 x 250 px):
-1. **CARD IMAGE** at the top: Full vertical card maximized to **120 x 220 px** (88% of screen height, edge-to-edge), rotated 180° when reversed (upside down).
-2. **CARD NAME (position: Up or Down)**: E.g. `The Fool (Up)` or `The Tower (Down)` centered beneath the card art.
-3. **DETAIL MODE (Holding button)**: Complete card description, upright/reversed meanings, keywords, and arcana info.
-4. No battery indicator.
+1. **COVER MODE (On Reboot / Fresh Boot)**:
+   - Displays ONLY the ornate back of a tarot card (120 x 240 px, edge-to-edge).
+   - No battery, no splash text, no title. Clean, mystical tarot deck back.
+2. **SHUFFLE ANIMATION (Holding BTN1)**:
+   - Holding Button 1 (GPIO 39) shows a continuous, fluid shuffling animation.
+   - Partial refresh with 8-bit byte aligned coordinates (`wx=0, ww=120`).
+   - "Shuffling..." and "Release to draw" text.
+3. **DRAW ON RELEASE (Hold Duration Entropy)**:
+   - When Button 1 is released, the exact press duration (both ms and us) is calculated.
+   - The hold duration is folded into the entropy pool and triggers dynamic deck cuts/swaps.
+   - Draws a random card and displays Card Face with a full refresh.
+4. **CARD DISPLAY (High Quality Art + Title Only)**:
+   - Card image maximized to **120 x 220 px** (88% of screen height, edge-to-edge), rotated 180° when reversed (upside down).
+   - Beneath the art: **CARD NAME (Up / Down status)**, e.g. `The Fool (Up)` or `The Tower (Down)`.
+   - No descriptions on the card face; no battery indicator.
+5. **DETAIL MODE (Tap BTN1 or BOOT)**:
+   - Complete card description: Arcana info, Upright/Reversed meaning, Keywords, Opposite meaning.
+   - Paginated if necessary.
+   - Tapping BTN1 or BOOT advances the page or returns to Card Face.
+   - Holding BTN1 starts shuffling for a new card.
+   - Holding BOOT on Card Face returns to Cover Mode.
 
 ---
 
@@ -83,12 +100,13 @@ Source card art is 804x1363 (≈ 0.59 aspect, vertical). Scale card to full scre
 - Shuffle animation: partial refresh of a small window ("Shuffling..." + stacked card outlines sliding), ~5 frames, then full refresh for the card (avoids ghosting).
 - Full refresh every N partial updates (e.g. 5) to keep the panel clean.
 
-## 5. Controls (mapping mirrors T-Echo)
-| Input | Splash | Card face | Description |
+## 5. Controls
+| Input | Cover Mode (Reboot) | Card Face | Detail Mode |
 | --- | --- | --- | --- |
-| Button1 click | Draw card | Draw new card | Next page (wraps) |
-| Button1 long press | Draw card | Open description | Back to card |
-| BOOT click | – | Toggle feature screen (see §7) | Back to card |
+| **Button 1 Hold** | **Shuffling animation** (continuous while held) → **Release draws card** (duration entropy) | **Shuffling animation** → **Release draws card** (duration entropy) | **Shuffling animation** → **Release draws card** |
+| **Button 1 Tap** (< 350ms) | Shuffles & draws card | **Open Detail Mode** | Next page / Back to Card Face |
+| **BOOT Tap** | Show last reading or shuffle | **Open Detail Mode** | Back to Card Face |
+| **BOOT Hold** (>= 500ms) | – | **Return to Cover Mode** | Back to Card Face |
 
 ## 6. Power
 - WiFi + BT off at boot (`WiFi.mode(WIFI_OFF); btStop();`).

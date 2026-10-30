@@ -5,11 +5,12 @@
 #include "../include/config.h"
 
 enum AppState : uint8_t {
-    STATE_SPLASH = 0,
+    STATE_COVER = 0,    // Only the back of a tarot card
     STATE_CARD_FACE,    // Single card (or one focused card of a spread)
     STATE_SPREAD,       // Three-card overview
     STATE_CARD_DESC,    // Text description of the focused card
 };
+#define STATE_SPLASH STATE_COVER
 
 enum DrawMode : uint8_t {
     MODE_SINGLE = 0,
