@@ -247,13 +247,13 @@ void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
     beginFrame();
 
     // 1. CARD IMAGE at the top
-    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 9 px
-    const int16_t cardY = 2;
+    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 1 px (edge-to-edge)
+    const int16_t cardY = 0;
     drawCardBitmap(cardX, cardY, cardIdx, reversed);
 
     // 2. Divider line below card
-    const int16_t divY = cardY + CARD_IMG_HEIGHT + 2; // 166 px
-    display.drawFastHLine(4, divY, SCREEN_WIDTH - 8, GxEPD_BLACK);
+    const int16_t divY = cardY + CARD_IMG_HEIGHT + 1; // 181 px
+    display.drawFastHLine(0, divY, SCREEN_WIDTH, GxEPD_BLACK);
 
     // 3. CARD NAME (Up/ Down status)
     String title = String(card.name) + (reversed ? " (Down)" : " (Up)");
@@ -261,8 +261,8 @@ void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
         title = String(positionLabel) + ": " + title;
     }
 
-    const int16_t textMargin = 4;
-    const int16_t maxW = SCREEN_WIDTH - 2 * textMargin; // 114 px
+    const int16_t textMargin = 2;
+    const int16_t maxW = SCREEN_WIDTH - 2 * textMargin; // 118 px
 
     u8g2.setFont(FONT_BOLD);
     std::vector<String> titleLines;
@@ -278,12 +278,12 @@ void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
     const char* descText = reversed ? card.reversed : card.upright;
     u8g2.setFont(FONT_BODY);
     std::vector<String> descLines;
-    const int16_t maxDescLines = (SCREEN_HEIGHT - y + 10) / 11;
+    const int16_t maxDescLines = (SCREEN_HEIGHT - y + 9) / 10;
     wrapText(descText, maxW, descLines, maxDescLines > 0 ? maxDescLines : 1);
 
     for (const String& l : descLines) {
         drawText(textMargin, y, l.c_str());
-        y += 11;
+        y += 10;
     }
 
     pushScreen(false);
@@ -370,7 +370,7 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
         y += DESC_LINE_H;
     }
 
-    pushScreen(true);
+    pushScreen(false);
     return pages;
 }
 

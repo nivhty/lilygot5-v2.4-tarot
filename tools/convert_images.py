@@ -223,17 +223,19 @@ def process_image(image_path: Path, target_w: int, target_h: int,
         if landscape:
             img = img.rotate(-90, expand=True)
 
-        # 2. Resize to fit within target dimensions while maintaining aspect ratio
-        ratio = min(target_w / img.width, target_h / img.height)
-        new_w = max(1, int(round(img.width * ratio)))
-        new_h = max(1, int(round(img.height * ratio)))
-        resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        # 2. Auto-crop scanner white borders around the card frame
+        gray_orig = img.convert('L')
+        mask = gray_orig.point(lambda p: 255 if p < 180 else 0)
+        bbox = mask.getbbox()
+        if bbox:
+            bx0 = max(0, bbox[0] - 1)
+            by0 = max(0, bbox[1] - 1)
+            bx1 = min(img.width, bbox[2] + 1)
+            by1 = min(img.height, bbox[3] + 1)
+            img = img.crop((bx0, by0, bx1, by1))
 
-        # Center on a white canvas of exact target dimensions
-        canvas = Image.new('RGB', (target_w, target_h), (255, 255, 255))
-        offset_x = (target_w - new_w) // 2
-        offset_y = (target_h - new_h) // 2
-        canvas.paste(resized, (offset_x, offset_y))
+        # 3. Resize edge-to-edge to target dimensions (no letterboxing or indentation)
+        canvas = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
         # 2. Convert to 1-bit monochrome (Floyd-Steinberg dithering or threshold)
         gray = canvas.convert('L')

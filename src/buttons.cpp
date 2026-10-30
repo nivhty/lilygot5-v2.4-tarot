@@ -22,6 +22,11 @@ static void buttonEventHandler(AceButton* button, uint8_t eventType, uint8_t but
     const bool isBtn1 = button->getPin() == BUTTON_1_PIN;
     if ((isBtn1 && suppressButton1) || (!isBtn1 && suppressBoot)) return;
 
+    Serial.printf("[BUTTON] Pin %d (%s) event %s\n",
+                  button->getPin(), isBtn1 ? "Button 1" : "BOOT",
+                  eventType == AceButton::kEventClicked ? "CLICK" :
+                  eventType == AceButton::kEventLongPressed ? "LONG_PRESS" : "OTHER");
+
     if (eventType == AceButton::kEventClicked) {
         currentEvent = isBtn1 ? BTN1_CLICK : BOOT_CLICK;
     } else if (eventType == AceButton::kEventLongPressed) {
@@ -60,6 +65,12 @@ void checkButtons() {
     else if (suppressButton1 && now - btn1HighSince > 100) suppressButton1 = false;
     if (digitalRead(BUTTON_BOOT_PIN) == LOW) bootHighSince = now;
     else if (suppressBoot && now - bootHighSince > 100) suppressBoot = false;
+
+    // Failsafe: never remain permanently suppressed
+    if (now > 1500) {
+        suppressButton1 = false;
+        suppressBoot = false;
+    }
 }
 
 ButtonEvent consumeButtonEvent() {

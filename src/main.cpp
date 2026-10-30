@@ -91,11 +91,6 @@ static void toggleMode() {
 // -----------------------------------------------------------------------------
 
 static void handleEvent(ButtonEvent event) {
-    if (event == BOOT_LONG_PRESS) {
-        toggleMode();
-        return;
-    }
-
     switch (currentState) {
         case STATE_SPLASH:
             if (event == BTN1_CLICK || event == BTN1_LONG_PRESS) {
@@ -103,13 +98,15 @@ static void handleEvent(ButtonEvent event) {
             } else if (event == BOOT_CLICK) {
                 // "Card of the day": bring back the last reading
                 if (loadLastReadingFromNvs(currentReading)) showReading();
+            } else if (event == BOOT_LONG_PRESS) {
+                toggleMode();
             }
             break;
 
         case STATE_CARD_FACE:
             if (event == BTN1_CLICK) {
                 newReading();
-            } else if (event == BTN1_LONG_PRESS) {
+            } else if (event == BTN1_LONG_PRESS || event == BOOT_LONG_PRESS) {
                 page = 0;
                 showDescription();
             } else if (event == BOOT_CLICK) {
@@ -125,19 +122,24 @@ static void handleEvent(ButtonEvent event) {
         case STATE_SPREAD:
             if (event == BTN1_CLICK) {
                 newReading();
-            } else if (event == BTN1_LONG_PRESS || event == BOOT_CLICK) {
+            } else if (event == BTN1_LONG_PRESS || event == BOOT_LONG_PRESS) {
+                page = 0;
+                showDescription();
+            } else if (event == BOOT_CLICK) {
                 focus = 0;
                 showFocusedCard();
             }
             break;
 
         case STATE_CARD_DESC:
-            if (event == BTN1_CLICK) {
-                if (pageCount > 1) {
-                    page = (page + 1) % pageCount;
+            if (event == BTN1_CLICK || event == BOOT_CLICK) {
+                if (pageCount > 1 && page + 1 < pageCount) {
+                    page++;
                     showDescription();
+                } else {
+                    showFocusedCard();
                 }
-            } else if (event == BTN1_LONG_PRESS || event == BOOT_CLICK) {
+            } else if (event == BTN1_LONG_PRESS || event == BOOT_LONG_PRESS) {
                 showFocusedCard();
             }
             break;
