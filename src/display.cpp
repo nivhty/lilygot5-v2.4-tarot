@@ -33,6 +33,17 @@ static uint8_t partialCount = 0;
 #define FONT_SMALL  u8g2_font_5x8_tf
 
 static const char* const SPREAD_LABELS[SPREAD_SIZE] = {"Past", "Present", "Future"};
+static const char* const SUIT_NAMES[] = {"Major Arcana", "Wands", "Cups", "Swords", "Pentacles"};
+static const char* const ROMAN[] = {
+    "0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI"};
+
+static String arcanaInfo(const TarotCard& card) {
+    if (card.suit == SUIT_MAJOR) {
+        return String(card.number <= 21 ? ROMAN[card.number] : "?") + " - Major Arcana";
+    }
+    return String("Minor Arcana - ") + SUIT_NAMES[card.suit <= SUIT_PENTACLES ? card.suit : 0];
+}
 
 // -----------------------------------------------------------------------------
 // Low-level helpers
@@ -239,20 +250,20 @@ void drawSplashScreen(const SplashInfo& info) {
 }
 
 // Vertical Card Face
-// 1. CARD IMAGE at top (upside down if reversed)
-// 2. CARD NAME (Up/ Down status)
-// 3. SHORT DESCRIPTION
+// 1. CARD IMAGE at top (120 x 220, upside down if reversed)
+// 2. CARD NAME + (position: up or down)
+// All descriptions are in detail mode (accessed by holding the button)
 void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
     const TarotCard& card = getCard(cardIdx);
     beginFrame();
 
-    // 1. CARD IMAGE at the top
-    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 1 px (edge-to-edge)
+    // 1. CARD IMAGE at the top (120 x 220 edge-to-edge)
+    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 1 px
     const int16_t cardY = 0;
     drawCardBitmap(cardX, cardY, cardIdx, reversed);
 
     // 2. Divider line below card
-    const int16_t divY = cardY + CARD_IMG_HEIGHT + 1; // 181 px
+    const int16_t divY = cardY + CARD_IMG_HEIGHT + 1; // 221 px
     display.drawFastHLine(0, divY, SCREEN_WIDTH, GxEPD_BLACK);
 
     // 3. CARD NAME (Up/ Down status)
@@ -261,29 +272,16 @@ void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
         title = String(positionLabel) + ": " + title;
     }
 
-    const int16_t textMargin = 2;
-    const int16_t maxW = SCREEN_WIDTH - 2 * textMargin; // 118 px
+    const int16_t maxW = SCREEN_WIDTH - 6; // 116 px
 
     u8g2.setFont(FONT_BOLD);
     std::vector<String> titleLines;
     wrapText(title.c_str(), maxW, titleLines, 2);
 
-    int16_t y = divY + 11;
+    int16_t y = (titleLines.size() == 1) ? (divY + 18) : (divY + 12);
     for (const String& l : titleLines) {
-        drawText(textMargin, y, l.c_str());
-        y += 11;
-    }
-
-    // 4. SHORT DESCRIPTION
-    const char* descText = reversed ? card.reversed : card.upright;
-    u8g2.setFont(FONT_BODY);
-    std::vector<String> descLines;
-    const int16_t maxDescLines = (SCREEN_HEIGHT - y + 9) / 10;
-    wrapText(descText, maxW, descLines, maxDescLines > 0 ? maxDescLines : 1);
-
-    for (const String& l : descLines) {
-        drawText(textMargin, y, l.c_str());
-        y += 10;
+        drawTextCentered(SCREEN_WIDTH / 2, y, l.c_str());
+        y += 12;
     }
 
     pushScreen(false);
@@ -312,6 +310,8 @@ static const uint8_t DESC_LINES_PER_PAGE = 18;   // fits 18 lines vertically
 static void buildDescription(const TarotCard& card, bool reversed, std::vector<DescLine>& out) {
     const int16_t width = SCREEN_WIDTH - 8;
     std::vector<String> tmp;
+
+    out.push_back({arcanaInfo(card), true});
 
     out.push_back({reversed ? "Meaning (Reversed)" : "Meaning (Upright)", true});
     u8g2.setFont(FONT_BODY);

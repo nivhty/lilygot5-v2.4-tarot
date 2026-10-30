@@ -7,9 +7,9 @@ Using a lilygo t5 to shuffle tarot card on the eink display, read the documentat
 
 # UI
 Full vertical / portrait orientation (122 x 250 px):
-1. **CARD IMAGE** at the top: Full vertical card (104 x 162 px), rotated 180° when reversed (upside down).
-2. **CARD NAME (Up/ Down status)**: E.g. `The Fool (Up)` or `The Tower (Down)`.
-3. **SHORT DESCRIPTION**: 1-2 sentence core upright/reversed meaning.
+1. **CARD IMAGE** at the top: Full vertical card maximized to **120 x 220 px** (88% of screen height, edge-to-edge), rotated 180° when reversed (upside down).
+2. **CARD NAME (position: Up or Down)**: E.g. `The Fool (Up)` or `The Tower (Down)` centered beneath the card art.
+3. **DETAIL MODE (Holding button)**: Complete card description, upright/reversed meanings, keywords, and arcana info.
 4. No battery indicator.
 
 ---
