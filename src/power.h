@@ -5,7 +5,10 @@
 
 void powerInit();               // Release sleep pin holds, radios off, display power on
 bool wokeFromButton();          // True if this boot is a wake-up from deep sleep via Button 1
-void enterDeepSleep();          // Display power off, wake on Button 1. Never returns.
+void enterDeepSleep();
+// Light sleep for up to `ms` (RAM, GPIO and display state kept, wakes in ~1 ms).
+// Wakes early when Button 1 or BOOT is pressed. Returns true if woken by a button.
+bool lightSleep(uint32_t ms);          // Display power off, wake on Button 1. Never returns.
 uint16_t readBatteryMv();
 uint8_t batteryPercent();
 

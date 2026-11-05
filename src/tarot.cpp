@@ -72,7 +72,7 @@ static bool deckIsValid() {
     return true;
 }
 
-static void saveDeck() {
+[[maybe_unused]] static void saveDeck() {
     Preferences prefs;
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putBytes("deck", deck, DECK_SIZE);
@@ -118,7 +118,16 @@ void drawReading(Reading& out, uint8_t count) {
         out.cards[i] = deck[deckPos++];
         if (randomBelow(2)) out.reversedMask |= (1 << i);
     }
-    saveDeck();
+    // Persisted by tarotCommit() together with the reading (one NVS session instead of two)
+}
+
+void tarotCommit(const Reading& last) {
+    Preferences prefs;
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putBytes("deck", deck, DECK_SIZE);
+    prefs.putUChar("pos", deckPos);
+    prefs.putBytes("last", &last, sizeof(Reading));   // same key as saveLastReadingToNvs()
+    prefs.end();
 }
 
 uint8_t cardsRemaining() {

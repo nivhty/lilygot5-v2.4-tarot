@@ -6,9 +6,13 @@
 
 void setupDisplay();
 void displayHibernate();
+void displayPowerOff();   // panel booster off, keeps image + controller RAM (use before light sleep)
+
+// Hook called ~every 1 ms while the panel is busy refreshing (used to catch button taps)
+void displaySetBusyHook(void (*hook)());
 
 // Cover mode: displays only the ornate back of a tarot card (full refresh)
-void drawCoverScreen();
+void drawCoverScreen(bool partial = false);
 
 // Single vertical card face:
 // Top: CARD IMAGE (upside down if reversed, 120 x 220)
@@ -16,7 +20,7 @@ void drawCoverScreen();
 void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel = nullptr, bool partial = false);
 
 // Brief charging notice with battery icon
-void drawChargingScreen(uint8_t percent);
+void drawChargingScreen(uint8_t percent, bool partial = true);
 
 // Three-card overview or focused card in spread
 void drawSpread(const Reading& reading);

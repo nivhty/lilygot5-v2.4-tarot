@@ -134,14 +134,19 @@ static void drawCardBitmap(int16_t x0, int16_t y0, uint8_t cardIdx, bool reverse
         return;
     }
 
+    // Frame is already white: skip all-white bytes and only plot black pixels
     const int16_t bytesPerRow = (w + 7) / 8;
     for (int16_t y = 0; y < h; y++) {
-        for (int16_t x = 0; x < w; x++) {
-            uint8_t b = pgm_read_byte(bmp + y * bytesPerRow + (x >> 3));
-            if (b & (0x80 >> (x & 7))) {
-                int16_t px = reversed ? (w - 1 - x) : x;
-                int16_t py = reversed ? (h - 1 - y) : y;
-                display.drawPixel(x0 + px, y0 + py, GxEPD_BLACK);
+        const uint8_t* row = bmp + y * bytesPerRow;
+        const int16_t py = reversed ? (y0 + h - 1 - y) : (y0 + y);
+        for (int16_t bx = 0; bx < bytesPerRow; bx++) {
+            const uint8_t b = pgm_read_byte(row + bx);
+            if (b == 0) continue;
+            for (uint8_t bit = 0; bit < 8; bit++) {
+                if (!(b & (0x80 >> bit))) continue;
+                const int16_t x = (bx << 3) + bit;
+                if (x >= w) break;
+                display.drawPixel(reversed ? (x0 + w - 1 - x) : (x0 + x), py, GxEPD_BLACK);
             }
         }
     }
@@ -212,9 +217,21 @@ static void drawCardBack(int16_t x, int16_t y, int16_t w, int16_t h) {
 // Public API
 // -----------------------------------------------------------------------------
 
+static void (*busyHook)() = nullptr;
+static void busyCallback(const void*) {
+    delay(1);
+    if (busyHook) busyHook();
+}
+
+void displaySetBusyHook(void (*hook)()) {
+    busyHook = hook;
+    display.epd2.setBusyCallback(busyCallback);
+}
+
 void setupDisplay() {
     SPI.begin(EPD_SCLK, EPD_MISO, EPD_MOSI);
-    display.init(0, true, 2, false);
+    // 20 MHz SPI (GxEPD2 default is 4 MHz): shorter frame-buffer transfers on every refresh
+    display.init(0, true, 2, false, SPI, SPISettings(20000000, MSBFIRST, SPI_MODE0));
     display.setRotation(BASE_ROTATION);
     display.setTextWrap(false);
 
@@ -230,15 +247,19 @@ void displayHibernate() {
     display.hibernate();
 }
 
+void displayPowerOff() {
+    display.powerOff();   // booster off, controller RAM kept -> partial refresh still works after light sleep
+}
+
 // Cover mode: displays ONLY the back of a tarot card (full refresh)
-void drawCoverScreen() {
+void drawCoverScreen(bool partial) {
     beginFrame();
     const int16_t bw = 120;
     const int16_t bh = 240;
     const int16_t bx = (SCREEN_WIDTH - bw) / 2; // 1 px
     const int16_t by = (SCREEN_HEIGHT - bh) / 2; // 5 px
     drawCardBack(bx, by, bw, bh);
-    pushScreen(false); // full refresh: crisp & pristine
+    pushScreen(partial);   // full refresh by default: crisp & pristine
 }
 
 // Vertical Card Face
@@ -274,7 +295,7 @@ void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel, boo
 }
 
 // Brief "Charging" screen with a battery icon and the current level
-void drawChargingScreen(uint8_t percent) {
+void drawChargingScreen(uint8_t percent, bool partial) {
     beginFrame();
     const int16_t bw = 60, bh = 30;
     const int16_t bx = (SCREEN_WIDTH - bw) / 2 - 3, by = 80;
@@ -299,7 +320,7 @@ void drawChargingScreen(uint8_t percent) {
     u8g2.setFont(FONT_NAME);
     drawTextCentered(SCREEN_WIDTH / 2, by + bh + 58, buf);
 
-    pushScreen(false);
+    pushScreen(partial);
 }
 
 void drawSpread(const Reading& reading) {
@@ -348,16 +369,28 @@ static void buildDescription(const TarotCard& card, bool reversed, std::vector<D
     for (auto& s : tmp) out.push_back({s, false});
 }
 
+// Word-wrapped layout of the last viewed card, reused across page turns
+static std::vector<DescLine> cachedDesc;
+static int16_t cachedDescKey = -1;
+
+static const std::vector<DescLine>& getDescription(uint8_t cardIdx, bool reversed) {
+    const int16_t key = (int16_t)cardIdx * 2 + (reversed ? 1 : 0);
+    if (key != cachedDescKey) {
+        cachedDesc.clear();
+        buildDescription(getCard(cardIdx), reversed, cachedDesc);
+        cachedDescKey = key;
+    }
+    return cachedDesc;
+}
+
 uint8_t cardDescriptionPageCount(uint8_t cardIdx, bool reversed) {
-    std::vector<DescLine> lines;
-    buildDescription(getCard(cardIdx), reversed, lines);
+    const std::vector<DescLine>& lines = getDescription(cardIdx, reversed);
     return (uint8_t)((lines.size() + DESC_LINES_PER_PAGE - 1) / DESC_LINES_PER_PAGE);
 }
 
 uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* positionLabel, uint8_t page, bool partial) {
     const TarotCard& card = getCard(cardIdx);
-    std::vector<DescLine> lines;
-    buildDescription(card, reversed, lines);
+    const std::vector<DescLine>& lines = getDescription(cardIdx, reversed);
     const uint8_t pages = (uint8_t)((lines.size() + DESC_LINES_PER_PAGE - 1) / DESC_LINES_PER_PAGE);
     if (page >= pages) page = 0;
 

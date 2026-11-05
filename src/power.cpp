@@ -32,12 +32,30 @@ void enterDeepSleep() {
     gpio_hold_en((gpio_num_t)EPD_PWR_EN);
     gpio_deep_sleep_hold_en();
 
-    // Wake on Button 1 (active LOW, external pull-up)
+    // Drop light-sleep wake sources (timer/GPIO), then wake on Button 1 only (active LOW, external pull-up)
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_1_PIN, 0);
 
     Serial.println("[SLEEP] Entering deep sleep");
     Serial.flush();
     esp_deep_sleep_start();
+}
+
+bool lightSleep(uint32_t ms) {
+    gpio_wakeup_enable((gpio_num_t)BUTTON_1_PIN, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)BUTTON_BOOT_PIN, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+    esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
+
+    Serial.flush();
+    esp_light_sleep_start();
+
+    const bool byButton = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO;
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+    gpio_wakeup_disable((gpio_num_t)BUTTON_1_PIN);
+    gpio_wakeup_disable((gpio_num_t)BUTTON_BOOT_PIN);
+    return byButton;
 }
 
 uint16_t readBatteryMv() {

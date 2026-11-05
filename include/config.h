@@ -2,8 +2,10 @@
 #define CONFIG_H
 
 // --- Timing ---
-#define INACTIVITY_TIMEOUT_MS   60000   // 60 s idle before deep sleep
-#define LONG_PRESS_MS           500     // 500 ms long press threshold
+#define INACTIVITY_TIMEOUT_MS   20000   // 20 s idle -> light sleep (instant wake, screen state kept)
+#define DEEP_SLEEP_AFTER_MS     600000  // 10 min idle -> deep sleep (lowest power, cold boot on wake)
+#define IDLE_CHARGER_POLL_MS    5000    // Wake from light sleep this often to check for a charger
+#define LONG_PRESS_MS           500     // 500 ms long press threshold (BOOT hold -> cover)
 #define CLICK_MAX_MS            450     // Max press duration still counted as a click
 #define WAKE_GUARD_MS           500     // Ignore button events right after boot/wake
 #define SHUFFLE_FRAMES          5       // Number of shuffle animation frames

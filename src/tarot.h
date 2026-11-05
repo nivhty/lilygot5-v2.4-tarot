@@ -18,6 +18,10 @@ void tarotShuffleWithDuration(uint32_t holdMs, uint32_t holdUs);
 // The deck is reshuffled automatically once all 78 cards have been drawn.
 void drawReading(Reading& out, uint8_t count);
 
+// Persist the deck state and the last reading in a single NVS write session.
+// Call right after drawReading().
+void tarotCommit(const Reading& last);
+
 // Cards left before the deck is reshuffled
 uint8_t cardsRemaining();
 
