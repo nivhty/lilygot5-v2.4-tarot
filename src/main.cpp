@@ -40,15 +40,33 @@ static void showCover() {
     currentState = STATE_COVER;
 }
 
-static void showFocusedCard() {
-    drawCardFace(currentReading.cards[focus], currentReading.isReversed(focus), positionLabel());
+static void showFocusedCard(bool partial = false) {
+    drawCardFace(currentReading.cards[focus], currentReading.isReversed(focus), positionLabel(), partial);
     currentState = STATE_CARD_FACE;
 }
 
-static void showDescription() {
+static void showDescription(bool partial = true) {
     pageCount = drawCardDescription(currentReading.cards[focus], currentReading.isReversed(focus),
-                                    positionLabel(), page);
+                                    positionLabel(), page, partial);
     currentState = STATE_CARD_DESC;
+}
+
+static void redrawCurrent() {
+    if (currentState == STATE_CARD_FACE) showFocusedCard();
+    else if (currentState == STATE_CARD_DESC) showDescription(false);
+    else showCover();
+}
+
+static void pollCharger() {
+    static unsigned long lastPoll = 0;
+    if (millis() - lastPoll < 1000) return;
+    lastPoll = millis();
+    if (chargerEvent() > 0) {
+        drawChargingScreen(batteryPercent());
+        delay(CHARGING_SCREEN_MS);
+        redrawCurrent();
+        lastActivityTime = millis();
+    }
 }
 
 static void doShuffleAndDraw(unsigned long pressStartMs, unsigned long pressStartUs) {
@@ -126,10 +144,13 @@ void setup() {
         Serial.println("[READY] T5 Tarot booted into Cover Mode");
     }
 
+    chargerEvent();   // establish voltage baseline (no popup at boot)
     lastActivityTime = millis();
 }
 
 void loop() {
+    pollCharger();
+
     // -------------------------------------------------------------------------
     // 1. Button 1 (GPIO 39) - Active LOW
     // -------------------------------------------------------------------------
@@ -171,7 +192,7 @@ void loop() {
                         page++;
                         showDescription();
                     } else {
-                        showFocusedCard();
+                        showFocusedCard(true);
                     }
                 }
                 lastActivityTime = millis();
@@ -209,7 +230,7 @@ void loop() {
                     showDescription();
                 }
             } else if (currentState == STATE_CARD_DESC) {
-                showFocusedCard();
+                showFocusedCard(true);
             }
             lastActivityTime = millis();
         }

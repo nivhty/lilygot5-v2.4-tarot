@@ -55,3 +55,30 @@ uint8_t batteryPercent() {
     return (uint8_t)((uint32_t)(mv - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
 }
 
+
+// Charger detection: while charging, the battery node rises by ~0.1 V or more versus idle.
+static bool charging = false;
+static uint16_t baselineMv = 0;
+
+bool isCharging() { return charging; }
+
+int8_t chargerEvent() {
+    const uint16_t mv = readBatteryMv();
+    if (baselineMv == 0) {                       // first sample after boot
+        baselineMv = mv;
+        charging = mv >= BATTERY_CHARGING_MV;
+        return charging ? 1 : 0;
+    }
+    int8_t ev = 0;
+    if (!charging && (mv >= baselineMv + CHARGE_JUMP_MV || mv >= BATTERY_CHARGING_MV)) {
+        charging = true; ev = 1;
+    } else if (charging && mv + CHARGE_JUMP_MV <= baselineMv && mv < BATTERY_CHARGING_MV) {
+        charging = false; ev = -1;
+    }
+    if (ev != 0) {
+        baselineMv = mv;
+    } else {
+        baselineMv = (uint16_t)((baselineMv * 7 + mv) / 8);   // slow tracking of drift
+    }
+    return ev;
+}

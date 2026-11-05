@@ -25,5 +25,8 @@
 // --- Battery ---
 #define BATTERY_FULL_MV         4200
 #define BATTERY_EMPTY_MV        3300
+#define BATTERY_CHARGING_MV     4250    // Above this the cell can only be on a charger
+#define CHARGE_JUMP_MV          60      // Voltage step that indicates plug/unplug
+#define CHARGING_SCREEN_MS      3000    // How long the charging notice stays up
 
 #endif // CONFIG_H

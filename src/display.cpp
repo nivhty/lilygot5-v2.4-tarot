@@ -8,6 +8,9 @@
 #include "../include/tarot_deck.h"
 #include "../include/tarot_bitmaps.h"
 #include "tarot.h"
+#include "power.h"
+
+#define PAD 4   // Screen padding (px) on all four sides
 
 // -----------------------------------------------------------------------------
 // Panel selection (see platformio.ini build_flags)
@@ -240,38 +243,61 @@ void drawCoverScreen() {
 
 // Vertical Card Face
 // 1. CARD IMAGE at top (120 x 220, upside down if reversed)
-// 2. CARD NAME + (position: up or down)
+// 2. CARD NAME only (single line)
+// 3. Orientation "(Upright)" / "(Reversed)" (with spread position if any) at the bottom
 // All descriptions are in detail mode (accessed by holding the button)
-void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel) {
+void drawCardFace(uint8_t cardIdx, bool reversed, const char* positionLabel, bool partial) {
     const TarotCard& card = getCard(cardIdx);
     beginFrame();
 
-    // 1. CARD IMAGE at the top (120 x 220 edge-to-edge)
-    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2; // 1 px
+    const int16_t cardX = (SCREEN_WIDTH - CARD_IMG_WIDTH) / 2;
     const int16_t cardY = 0;
     drawCardBitmap(cardX, cardY, cardIdx, reversed);
 
-    // 2. Divider line below card
     const int16_t divY = cardY + CARD_IMG_HEIGHT + 1; // 221 px
     display.drawFastHLine(0, divY, SCREEN_WIDTH, GxEPD_BLACK);
 
-    // 3. CARD NAME (Up/ Down status)
-    String title = String(card.name) + (reversed ? " (Down)" : " (Up)");
-    if (positionLabel) {
-        title = String(positionLabel) + ": " + title;
-    }
+    const int16_t maxW = SCREEN_WIDTH - 2 * PAD;
 
-    const int16_t maxW = SCREEN_WIDTH - 6; // 116 px
-
+    // Name only. Longest deck name ("Knight of Pentacles") fits in bold; shrink font as a safeguard.
     u8g2.setFont(FONT_BOLD);
-    std::vector<String> titleLines;
-    wrapText(title.c_str(), maxW, titleLines, 2);
+    if (textWidth(card.name) > maxW) u8g2.setFont(FONT_BODY);
+    drawTextCentered(SCREEN_WIDTH / 2, divY + 13, card.name);
 
-    int16_t y = (titleLines.size() == 1) ? (divY + 18) : (divY + 12);
-    for (const String& l : titleLines) {
-        drawTextCentered(SCREEN_WIDTH / 2, y, l.c_str());
-        y += 12;
-    }
+    // Orientation line at the very bottom
+    String orient = reversed ? "(Reversed)" : "(Upright)";
+    if (positionLabel) orient = String(positionLabel) + " " + orient;
+    u8g2.setFont(FONT_BODY);
+    drawTextCentered(SCREEN_WIDTH / 2, SCREEN_HEIGHT - PAD, orient.c_str());
+
+    pushScreen(partial);
+}
+
+// Brief "Charging" screen with a battery icon and the current level
+void drawChargingScreen(uint8_t percent) {
+    beginFrame();
+    const int16_t bw = 60, bh = 30;
+    const int16_t bx = (SCREEN_WIDTH - bw) / 2 - 3, by = 80;
+
+    display.drawRect(bx, by, bw, bh, GxEPD_BLACK);
+    display.drawRect(bx + 1, by + 1, bw - 2, bh - 2, GxEPD_BLACK);
+    display.fillRect(bx + bw, by + 9, 5, bh - 18, GxEPD_BLACK);   // terminal nub
+    const int16_t fillW = (int16_t)((bw - 8) * percent / 100);
+    display.fillRect(bx + 4, by + 4, fillW, bh - 8, GxEPD_BLACK);
+
+    // Lightning bolt (white where the fill is black, black elsewhere)
+    const int16_t cx = bx + bw / 2, cy = by + bh / 2;
+    display.fillTriangle(cx + 4, cy - 11, cx - 6, cy + 2, cx + 1, cy + 2, GxEPD_WHITE);
+    display.fillTriangle(cx - 4, cy + 11, cx + 6, cy - 2, cx - 1, cy - 2, GxEPD_WHITE);
+    display.drawLine(cx + 4, cy - 11, cx - 6, cy + 2, GxEPD_BLACK);
+    display.drawLine(cx - 4, cy + 11, cx + 6, cy - 2, GxEPD_BLACK);
+
+    u8g2.setFont(FONT_TITLE);
+    drawTextCentered(SCREEN_WIDTH / 2, by + bh + 36, "Charging");
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%u%%", percent);
+    u8g2.setFont(FONT_NAME);
+    drawTextCentered(SCREEN_WIDTH / 2, by + bh + 58, buf);
 
     pushScreen(false);
 }
@@ -293,11 +319,15 @@ struct DescLine {
 };
 
 static const int16_t DESC_LINE_H = 12;
-static const int16_t DESC_FIRST_BASELINE = 28;
-static const uint8_t DESC_LINES_PER_PAGE = 18;   // fits 18 lines vertically
+static const int16_t DESC_HEADER_BASELINE = PAD + 9;        // 4 px top padding + font ascent
+static const int16_t DESC_HEADER_DIV_Y = DESC_HEADER_BASELINE + 4;
+static const int16_t DESC_FIRST_BASELINE = DESC_HEADER_DIV_Y + 13;
+static const int16_t DESC_FOOTER_DIV_Y = SCREEN_HEIGHT - 16;
+static const int16_t DESC_FOOTER_BASELINE = SCREEN_HEIGHT - PAD - 1;
+static const uint8_t DESC_LINES_PER_PAGE = 17;   // body area between header and footer dividers
 
 static void buildDescription(const TarotCard& card, bool reversed, std::vector<DescLine>& out) {
-    const int16_t width = SCREEN_WIDTH - 8;
+    const int16_t width = SCREEN_WIDTH - 2 * PAD;
     std::vector<String> tmp;
 
     out.push_back({arcanaInfo(card), true});
@@ -324,7 +354,7 @@ uint8_t cardDescriptionPageCount(uint8_t cardIdx, bool reversed) {
     return (uint8_t)((lines.size() + DESC_LINES_PER_PAGE - 1) / DESC_LINES_PER_PAGE);
 }
 
-uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* positionLabel, uint8_t page) {
+uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* positionLabel, uint8_t page, bool partial) {
     const TarotCard& card = getCard(cardIdx);
     std::vector<DescLine> lines;
     buildDescription(card, reversed, lines);
@@ -334,32 +364,37 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
     beginFrame();
 
     // Top Header: Title and Page
-    String header = String(card.name) + (reversed ? " (Down)" : " (Up)");
+    String header = String(card.name);
     if (positionLabel) header = String(positionLabel) + " - " + header;
 
     u8g2.setFont(FONT_BOLD);
     std::vector<String> hLines;
-    wrapText(header.c_str(), SCREEN_WIDTH - 28, hLines, 1);
-    drawText(4, 12, hLines.empty() ? "" : hLines[0].c_str());
-
-    if (pages > 1) {
-        char pBuf[8];
-        snprintf(pBuf, sizeof(pBuf), "%u/%u", page + 1, pages);
-        u8g2.setFont(FONT_SMALL);
-        drawText(SCREEN_WIDTH - textWidth(pBuf) - 4, 12, pBuf);
-    }
-    display.drawFastHLine(0, 16, SCREEN_WIDTH, GxEPD_BLACK);
+    wrapText(header.c_str(), SCREEN_WIDTH - 2 * PAD, hLines, 1);
+    drawText(PAD, DESC_HEADER_BASELINE, hLines.empty() ? "" : hLines[0].c_str());
+    display.drawFastHLine(0, DESC_HEADER_DIV_Y, SCREEN_WIDTH, GxEPD_BLACK);
 
     // Body Lines
     const size_t start = (size_t)page * DESC_LINES_PER_PAGE;
     int16_t y = DESC_FIRST_BASELINE;
     for (size_t i = start; i < lines.size() && i < start + DESC_LINES_PER_PAGE; i++) {
         u8g2.setFont(lines[i].bold ? FONT_BOLD : FONT_BODY);
-        drawText(4, y, lines[i].text.c_str());
+        drawText(PAD, y, lines[i].text.c_str());
         y += DESC_LINE_H;
     }
 
-    pushScreen(false);
+    // Footer: battery level (left) and page number (right)
+    display.drawFastHLine(0, DESC_FOOTER_DIV_Y, SCREEN_WIDTH, GxEPD_BLACK);
+    char bBuf[16];
+    snprintf(bBuf, sizeof(bBuf), "Battery %u%%", batteryPercent());
+    u8g2.setFont(FONT_SMALL);
+    drawText(PAD, DESC_FOOTER_BASELINE, bBuf);
+    if (pages > 1) {
+        char pBuf[8];
+        snprintf(pBuf, sizeof(pBuf), "%u/%u", page + 1, pages);
+        drawText(SCREEN_WIDTH - textWidth(pBuf) - PAD, DESC_FOOTER_BASELINE, pBuf);
+    }
+
+    pushScreen(partial);
     return pages;
 }
 
