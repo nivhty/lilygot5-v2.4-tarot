@@ -16,6 +16,7 @@
 #include "tarot.h"
 #include "power.h"
 #include "state_manager.h"
+#include "../include/debug.h"
 
 static AppState currentState = STATE_COVER;
 static DrawMode currentMode = MODE_SINGLE;
@@ -72,28 +73,47 @@ static void pollCharger() {
     static unsigned long lastPoll = 0;
     if (millis() - lastPoll < 1000) return;
     lastPoll = millis();
-    if (chargerEvent() > 0) showChargingPopup();
+    if (chargerEvent() > 0) {
+        DBG("[PWR] Charger detected (%u mV)", readBatteryMv());
+        showChargingPopup();
+    }
 }
 
-// Button 1 press latch: the e-paper refresh blocks loop() for up to ~2 s, so a quick tap during
-// that time would otherwise be lost. The busy hook remembers it and loop() acts on it afterwards.
+// Set only for the tap that woke the device (from light or deep sleep) when it was already released
+// before the code could see it. Taps made while the display is refreshing are deliberately NOT replayed:
+// a repeated tap during a slow refresh would undo the first one (open description, then close it again).
 static bool btn1Pending = false;
+
+// A button only counts once it has been seen released after the last screen update.
+// This drops presses that started during a refresh and are still held when it finishes.
+static bool btn1Armed = true;
+static bool bootArmed = true;
 
 // Called every ~1 ms while the panel is busy. Polls the pin instead of using an interrupt:
 // GPIO39 is prone to spurious edges whenever the ADC is read (battery level), which caused
 // endless phantom clicks. A press must stay LOW for ~15 ms to count, and is latched once.
 static void pollButton1WhileBusy() {
-    static uint8_t lowCount = 0;
+    static uint8_t lowMs = 0;
     if (digitalRead(BUTTON_1_PIN) == LOW) {
-        if (lowCount < 255) lowCount++;
-        if (lowCount == 15) btn1Pending = true;
+        if (lowMs < 255) lowMs++;
+        if (lowMs == 15) btn1Pending = true;   // LOW for 15 ms = a real press
     } else {
-        lowCount = 0;
+        lowMs = 0;
+    }
+}
+
+static const char* stateName(AppState s) {
+    switch (s) {
+        case STATE_COVER: return "COVER";
+        case STATE_CARD_FACE: return "CARD_FACE";
+        case STATE_CARD_DESC: return "CARD_DESC";
+        default: return "OTHER";
     }
 }
 
 // Click action (short press) on the card face / description pages
 static void handleButton1Click() {
+    DBG("[BTN1] Click in %s (page %u/%u)", stateName(currentState), page + 1, pageCount);
     if (currentState == STATE_CARD_FACE) {
         page = 0;
         showDescription();
@@ -105,6 +125,8 @@ static void handleButton1Click() {
             showFocusedCard(true);
         }
     }
+    // Any tap made during this click's screen refresh must NOT replay and undo the click!
+    btn1Pending = false;
 }
 
 static void doShuffleAndDraw(unsigned long pressStartMs, unsigned long pressStartUs) {
@@ -151,6 +173,7 @@ static void doShuffleAndDraw(unsigned long pressStartMs, unsigned long pressStar
 // Idle handling: light sleep first (instant wake, partial refresh still possible), deep sleep later.
 // Returns when a button is pressed or a charger is plugged in; loop() then handles it.
 static void idleSleep() {
+    DBG("[SLEEP] Idle %lu ms -> light sleep (state %s)", millis() - lastActivityTime, stateName(currentState));
     displayPowerOff();
     while (true) {
         const unsigned long idle = millis() - lastActivityTime;
@@ -158,6 +181,7 @@ static void idleSleep() {
             UiSnapshot snap = {0, currentState, currentMode, focus, page, currentReading};
             saveSnapshotToRtc(snap);
             displayHibernate();
+            DBG("[SLEEP] Idle %lu ms -> deep sleep", idle);
             enterDeepSleep();   // never returns
         }
         uint32_t ms = DEEP_SLEEP_AFTER_MS - idle;
@@ -169,9 +193,16 @@ static void idleSleep() {
             if (digitalRead(BUTTON_1_PIN) == HIGH && digitalRead(BUTTON_BOOT_PIN) == HIGH) {
                 btn1Pending = true;
             }
+            btn1Armed = bootArmed = true;     // this press began while asleep: it is a real press
+            lastActivityTime = millis();      // stay awake even if the press is not recognised
+            DBG("[SLEEP] Woke from light sleep by button: BTN1=%s BOOT=%s%s",
+                digitalRead(BUTTON_1_PIN) == LOW ? "down" : "up",
+                digitalRead(BUTTON_BOOT_PIN) == LOW ? "down" : "up",
+                btn1Pending ? " -> already released, will replay as click" : "");
             return;
         }
         if (chargerEvent() > 0) {
+            DBG("[PWR] Charger detected during light sleep (%u mV)", readBatteryMv());
             showChargingPopup();
             return;
         }
@@ -209,7 +240,8 @@ void setup() {
         // The press that woke us is usually released by the time we get here (~0.3-0.5 s boot):
         // act on it as a click instead of making the user press again.
         if (digitalRead(BUTTON_1_PIN) == HIGH) btn1Pending = true;
-        Serial.println("[READY] Woke from deep sleep, state restored");
+        DBG("[READY] Woke from deep sleep in %lu ms, state %s, BTN1 %s", millis(), stateName(currentState),
+            btn1Pending ? "already released -> will replay as click" : "still down");
     } else {
         // Fresh boot (reset / power on / flash): ALWAYS boot into Cover Mode!
         loadLastReadingFromNvs(currentReading);
@@ -223,6 +255,14 @@ void setup() {
 }
 
 void loop() {
+    // Loop stall detector: a gap > 150 ms between iterations means buttons were not being polled
+    static unsigned long lastLoopMs = millis();
+    const unsigned long gap = millis() - lastLoopMs;
+    // (Gaps caused by a handled button action or sleep are expected: those update lastActivityTime.)
+    if (gap > 150 && millis() - lastActivityTime > gap) {
+        DBG("[LOOP] Buttons were not polled for %lu ms (unexpected blocking)", gap);
+    }
+
     if (chargingShown) {
         const bool pressed = digitalRead(BUTTON_1_PIN) == LOW || digitalRead(BUTTON_BOOT_PIN) == LOW || btn1Pending;
         if (pressed || millis() - chargingShownAt >= CHARGING_SCREEN_MS) {
@@ -231,65 +271,91 @@ void loop() {
             chargingShown = false;
             redrawCurrent(true);
             btn1Pending = false;
+            btn1Armed = bootArmed = false;
             lastActivityTime = millis();
         }
         delay(10);
+        lastLoopMs = millis();
         return;
     }
 
     pollCharger();
 
-    // A tap that happened while the display was refreshing (already released): replay it now
+    // The tap that woke the device was already released: act on it now
     if (btn1Pending && digitalRead(BUTTON_1_PIN) == HIGH) {
         btn1Pending = false;
         if (currentState != STATE_COVER) {
+            Serial.println("[BTN1] Wake tap -> click");
             handleButton1Click();
+            btn1Armed = false;
             lastActivityTime = millis();
         }
     }
 
+    // Re-arm buttons once they are seen released
+    static bool loggedNotArmed = false;
+    if (digitalRead(BUTTON_1_PIN) == HIGH) {
+        btn1Armed = true;
+        loggedNotArmed = false;
+    } else if (!btn1Armed && !loggedNotArmed) {
+        DBG("[BTN1] Press IGNORED: button was already down when the last screen update finished");
+        loggedNotArmed = true;
+    }
+    if (digitalRead(BUTTON_BOOT_PIN) == HIGH) bootArmed = true;
+
     // -------------------------------------------------------------------------
     // 1. Button 1 (GPIO 39) - Active LOW
     // -------------------------------------------------------------------------
-    if (digitalRead(BUTTON_1_PIN) == LOW) {
+    if (btn1Armed && digitalRead(BUTTON_1_PIN) == LOW) {
+        const unsigned long seenMs = millis();
         delay(25); // Debounce
-        if (digitalRead(BUTTON_1_PIN) == LOW) {
+        if (digitalRead(BUTTON_1_PIN) != LOW) {
+            DBG("[BTN1] Press IGNORED: released within 25 ms debounce (glitch or very short tap)");
+        } else {
             unsigned long pressStartMs = millis();
             unsigned long pressStartUs = micros();
             btn1Pending = false;   // this press is handled right here
+            DBG("[BTN1] Press detected in %s", stateName(currentState));
 
             if (currentState == STATE_COVER) {
                 // In Cover mode: immediately start shuffling while held!
                 doShuffleAndDraw(pressStartMs, pressStartUs);
                 lastActivityTime = millis();
+                btn1Armed = false;
             } else if (currentState == STATE_CARD_FACE) {
                 // In Card Face mode: wait up to 350ms to distinguish Click (details) vs Hold (shuffle)
                 while (digitalRead(BUTTON_1_PIN) == LOW && (millis() - pressStartMs < 350)) {
                     delay(10);
                 }
                 if (digitalRead(BUTTON_1_PIN) == LOW) {
+                    DBG("[BTN1] Held > 350 ms -> shuffle");
                     // Still held after 350ms -> user is holding to shuffle a new card!
                     doShuffleAndDraw(pressStartMs, pressStartUs);
                 } else {
+                    DBG("[BTN1] Released after %lu ms -> click", millis() - seenMs);
                     // Released before 350ms -> click to open Detail Mode!
                     delay(30); btn1Pending = false;   // drop release bounce before the blocking refresh
                     handleButton1Click();
                 }
                 lastActivityTime = millis();
+                btn1Armed = false;
             } else if (currentState == STATE_CARD_DESC) {
                 // In Detail mode:
                 while (digitalRead(BUTTON_1_PIN) == LOW && (millis() - pressStartMs < 350)) {
                     delay(10);
                 }
                 if (digitalRead(BUTTON_1_PIN) == LOW) {
+                    DBG("[BTN1] Held > 350 ms -> shuffle");
                     // Still held after 350ms -> start shuffling new card!
                     doShuffleAndDraw(pressStartMs, pressStartUs);
                 } else {
+                    DBG("[BTN1] Released after %lu ms -> click", millis() - seenMs);
                     // Click -> advance page or return to card face
                     delay(30); btn1Pending = false;
                     handleButton1Click();
                 }
                 lastActivityTime = millis();
+                btn1Armed = false;
             }
         }
     }
@@ -297,7 +363,7 @@ void loop() {
     // -------------------------------------------------------------------------
     // 2. BOOT Button (GPIO 0) - Active LOW
     // -------------------------------------------------------------------------
-    if (digitalRead(BUTTON_BOOT_PIN) == LOW) {
+    if (bootArmed && digitalRead(BUTTON_BOOT_PIN) == LOW) {
         delay(25); // Debounce
         if (digitalRead(BUTTON_BOOT_PIN) == LOW) {
             unsigned long bootStartMs = millis();
@@ -305,6 +371,7 @@ void loop() {
                 delay(10);
             }
             const bool bootHeld = (digitalRead(BUTTON_BOOT_PIN) == LOW);
+            DBG("[BOOT] %s in %s", bootHeld ? "Hold" : "Click", stateName(currentState));
 
             // Act immediately (hold acts at the threshold, no need to let go first)
             if (currentState == STATE_COVER) {
@@ -329,6 +396,8 @@ void loop() {
                 delay(10);
             }
             lastActivityTime = millis();
+            bootArmed = false;
+            btn1Armed = false;
         }
     }
 
@@ -337,8 +406,10 @@ void loop() {
     // -------------------------------------------------------------------------
     if (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS && !btn1Pending) {
         idleSleep();
+        lastLoopMs = millis();
         return;
     }
 
     delay(10);
+    lastLoopMs = millis();
 }

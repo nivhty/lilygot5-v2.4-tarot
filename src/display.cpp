@@ -9,6 +9,7 @@
 #include "../include/tarot_bitmaps.h"
 #include "tarot.h"
 #include "power.h"
+#include "../include/debug.h"
 
 #define PAD 4   // Screen padding (px) on all four sides
 
@@ -52,14 +53,36 @@ static String arcanaInfo(const TarotCard& card) {
 // Low-level helpers
 // -----------------------------------------------------------------------------
 
+static bool partialPrimed = false;
+
 static void pushScreen(bool partial) {
-    if (partial && partialCount < FULL_REFRESH_EVERY) {
+    const unsigned long t0 = millis();
+    const bool doPartial = partial && partialCount < FULL_REFRESH_EVERY;
+    DBG("[EPD] %s refresh start%s", doPartial ? "partial" : "full",
+        (partial && !doPartial) ? " (forced: anti-ghosting)" : "");
+    if (doPartial) {
+        if (!partialPrimed) {
+            // On DEPG0213BN (SSD1680), GxEPD2_213_BN::_Update_Part() calls _Init_Part() (writing
+            // lut_partial to 0x32) BEFORE _PowerOn() (0x22 0xf8, which reloads the OTP LUT into 0x32),
+            // causing the first partial refresh after any powerOff() to fail to move pixels while
+            // writeImageAgain() still overwrites 0x26. Prime partial mode first with a 0-diff refresh
+            // (0x24 == 0x26 from the previous frame) so _PowerOn() is already done before writeImage().
+            display.epd2.refresh(true);
+            partialPrimed = true;
+        }
         display.display(true);
         partialCount++;
     } else {
+        // If a partial refresh ran previously (e.g. shuffle animation), power off first so
+        // _Update_Full() runs _PowerOn() (0x22 0xf8) and reloads the full-refresh OTP LUT.
+        display.powerOff();
         display.display(false);
+        // Prime partial mode immediately while 0x24 == 0x26 so the first button click is instant.
+        display.epd2.refresh(true);
+        partialPrimed = true;
         partialCount = 0;
     }
+    DBG("[EPD] refresh done in %lu ms", millis() - t0);
 }
 
 static void beginFrame() {
@@ -230,8 +253,7 @@ void displaySetBusyHook(void (*hook)()) {
 
 void setupDisplay() {
     SPI.begin(EPD_SCLK, EPD_MISO, EPD_MOSI);
-    // 20 MHz SPI (GxEPD2 default is 4 MHz): shorter frame-buffer transfers on every refresh
-    display.init(0, true, 2, false, SPI, SPISettings(20000000, MSBFIRST, SPI_MODE0));
+    display.init(0, true, 2, false);
     display.setRotation(BASE_ROTATION);
     display.setTextWrap(false);
 
@@ -244,10 +266,12 @@ void setupDisplay() {
 }
 
 void displayHibernate() {
+    partialPrimed = false;
     display.hibernate();
 }
 
 void displayPowerOff() {
+    partialPrimed = false;
     display.powerOff();   // booster off, controller RAM kept -> partial refresh still works after light sleep
 }
 
@@ -347,26 +371,26 @@ static const int16_t DESC_FOOTER_DIV_Y = SCREEN_HEIGHT - 16;
 static const int16_t DESC_FOOTER_BASELINE = SCREEN_HEIGHT - PAD - 1;
 static const uint8_t DESC_LINES_PER_PAGE = 17;   // body area between header and footer dividers
 
-static void buildDescription(const TarotCard& card, bool reversed, std::vector<DescLine>& out) {
-    const int16_t width = SCREEN_WIDTH - 2 * PAD;
+// Wrap `text` in the bold or body font to the padded width and append it.
+// Bold lines must be wrapped too: e.g. "Minor Arcana - Pentacles" is 126 px in bold, wider than the screen.
+static void addWrapped(std::vector<DescLine>& out, const char* text, bool bold) {
     std::vector<String> tmp;
+    u8g2.setFont(bold ? FONT_BOLD : FONT_BODY);
+    wrapText(text, SCREEN_WIDTH - 2 * PAD, tmp);
+    for (auto& s : tmp) out.push_back({s, bold});
+}
 
-    out.push_back({arcanaInfo(card), true});
+static void buildDescription(const TarotCard& card, bool reversed, std::vector<DescLine>& out) {
+    addWrapped(out, arcanaInfo(card).c_str(), true);
 
-    out.push_back({reversed ? "Meaning (Reversed)" : "Meaning (Upright)", true});
-    u8g2.setFont(FONT_BODY);
-    wrapText(reversed ? card.reversed : card.upright, width, tmp);
-    for (auto& s : tmp) out.push_back({s, false});
-    tmp.clear();
+    addWrapped(out, reversed ? "Meaning (Reversed)" : "Meaning (Upright)", true);
+    addWrapped(out, reversed ? card.reversed : card.upright, false);
 
-    out.push_back({"Keywords", true});
-    wrapText(card.keywords, width, tmp);
-    for (auto& s : tmp) out.push_back({s, false});
-    tmp.clear();
+    addWrapped(out, "Keywords", true);
+    addWrapped(out, card.keywords, false);
 
-    out.push_back({reversed ? "Opposite (Upright)" : "Opposite (Reversed)", true});
-    wrapText(reversed ? card.upright : card.reversed, width, tmp);
-    for (auto& s : tmp) out.push_back({s, false});
+    addWrapped(out, reversed ? "Opposite (Upright)" : "Opposite (Reversed)", true);
+    addWrapped(out, reversed ? card.upright : card.reversed, false);
 }
 
 // Word-wrapped layout of the last viewed card, reused across page turns
@@ -400,7 +424,10 @@ uint8_t drawCardDescription(uint8_t cardIdx, bool reversed, const char* position
     String header = String(card.name);
     if (positionLabel) header = String(positionLabel) + " - " + header;
 
+    // Spread headers like "Present - Knight of Pentacles" (146 px) are too wide in bold:
+    // fall back to the regular font, and only then truncate with an ellipsis.
     u8g2.setFont(FONT_BOLD);
+    if (textWidth(header.c_str()) > SCREEN_WIDTH - 2 * PAD) u8g2.setFont(FONT_BODY);
     std::vector<String> hLines;
     wrapText(header.c_str(), SCREEN_WIDTH - 2 * PAD, hLines, 1);
     drawText(PAD, DESC_HEADER_BASELINE, hLines.empty() ? "" : hLines[0].c_str());
@@ -475,6 +502,10 @@ void drawShuffleFrame(int frame, bool firstFrame) {
     drawTextCentered(SCREEN_WIDTH / 2, wy + ch + 52, "Release to draw");
 
     if (firstFrame) {
+        if (!partialPrimed) {
+            display.epd2.refresh(true);
+            partialPrimed = true;
+        }
         display.display(true);
     } else {
         display.displayWindow(wx, wy, ww, wh);
